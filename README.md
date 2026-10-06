@@ -1,38 +1,67 @@
-# AIU2 · YOLO11n 本地实验
+# AIU2 · YOLO11n 本地视觉应用
 
-项目实际位于 D:\aiu2；桌面“aiu2”是打开此目录的快捷方式。代码、虚拟环境、缓存、模型、数据集和训练结果均放在 D 盘。Git 已在项目根目录初始化，分支为 main；尚未配置 GitHub 远程仓库。
+本机 YOLO 示例与摄像头实时推理网页。项目使用 Ultralytics、PyTorch CUDA 和 OpenCV；Web API 使用 Python 标准库，并通过 MJPEG 将本地推理画面显示在浏览器中。服务默认只绑定 `127.0.0.1`。
 
-YOLO（You Only Look Once）用于识别图片中的物体并给出位置框与类别。本项目使用 YOLO11n：它是 YOLO11 的小型目标检测模型。当前使用 Ultralytics 8.4.173、PyTorch 2.14.1+cu130，在 NVIDIA GeForce RTX 5070 Laptop GPU 上运行。
+## 启动网页应用
 
-## 已跑通的流程
+双击桌面快捷方式 **YOLO 实时推理应用**，或在 PowerShell 执行：
 
-- 从官方来源取得预训练 YOLO11n 权重和 COCO8 小样本数据集。
-- 以 640 像素输入、批量 2、GPU 模式进行 3 轮微调；权重位于 runs\coco8_train\weights\best.pt。
-- 使用训练权重对 COCO8 验证图片检测，识别出 person 与 umbrella；带框结果位于 runs\predict\000000000036.jpg。
-- 此为环境与流程演示，不等同于完成飞书任务二可能要求的特定数据集、训练轮数或精度目标。
+```powershell
+cd D:\aiu2
+.\.venv\Scripts\python.exe -m yolo_demo web
+```
 
-## 安装（当前机器的实际命令）
+浏览器地址：<http://127.0.0.1:8765/>。在网页选择权重和摄像头，再启动检测；点击“停止检测”释放摄像头。关闭浏览器不会自动关闭后台服务；停止服务请执行：
 
-在 PowerShell 中执行：
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8765/api/shutdown
+```
 
-    cd D:\aiu2
-    $env:UV_CACHE_DIR = 'D:\aiu2\.uv-cache'
-    uv venv --python 'C:\Users\shao\Desktop\test\.uv-python\cpython-3.12-windows-x86_64-none\python.exe' .venv
-    uv pip install --python .venv\Scripts\python.exe 'torch==2.14.1+cu130' 'torchvision==0.29.1+cu130' --index-url https://download.pytorch.org/whl/cu130
-    uv pip install --python .venv\Scripts\python.exe 'ultralytics==8.4.173'
+## 训练和图片推理
 
-当前已安装完毕，日常使用无需重复安装。
+```powershell
+cd D:\aiu2
+.\.venv\Scripts\python.exe -m yolo_demo train
+.\.venv\Scripts\python.exe -m yolo_demo predict --source "D:\照片\示例.jpg"
+```
 
-## 启动
+示例训练使用 YOLO11n、COCO8、640 像素、batch 2 和 3 个 epoch；权重输出到 `runs\coco8_train\weights\best.pt`。它用于验证流程，不是针对自定义目标训练完成的模型。模型和数据缓存保存在 D 盘项目目录中。
 
-在 PowerShell 中执行：
+## 模块结构
 
-    cd D:\aiu2
-    .\.venv\Scripts\python.exe -m yolo_demo train
-    .\.venv\Scripts\python.exe -m yolo_demo predict
+- `yolo_demo/__main__.py`：命令行组合入口。
+- `yolo_demo/tasks.py`：训练与单张图片推理。
+- `yolo_demo/services/live_inference.py`：摄像头采集、模型推理和帧状态。
+- `yolo_demo/web/server.py`：本地 REST/MJPEG API 与静态页面服务。
+- `yolo_demo/web/static/`：网页展示和交互。
+- `实时推理应用使用说明.md`：快捷方式、网页和摄像头的操作手册。
 
-也可以检测自己的图片：
+## C++ 推理实验
 
-    .\.venv\Scripts\python.exe -m yolo_demo predict --source "D:\照片\示例.jpg"
+使用官方 ONNX Runtime，在相同输入与 CPU 线程数下对比 PyTorch、Python ORT、C++ ORT，并单独记录 GPU 基线：
 
-训练结果保存在 runs\coco8_train；带框图片保存在 runs\predict。models、datasets、runs、.venv、.uv-cache 等目录均由 .gitignore 排除，不会提交到 Git。
+```powershell
+cd D:\aiu2
+.\.venv\Scripts\python.exe -m native_experiment --iterations 80 --warmups 12 --threads 4
+```
+
+准备依赖见 `native_experiment/README.md`；结果见 `C++推理实验报告.md`。本实验只测模型前向推理，摄像头网页继续使用现有后端。
+
+## 自动设备选择
+
+摄像头网页已启用 GPU/CPU 自动切换，页面显示设备和切换原因。阈值、恢复条件与限制见 [自动设备切换说明](自动设备切换说明.md)。策略与模型迁移模块位于 yolo_demo/services/。
+
+## 在另一台电脑安装
+
+需要 Python 3.12 和 uv。在克隆后的项目目录运行：
+
+```powershell
+uv venv --python 3.12
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+.\.venv\Scripts\python.exe -m yolo_demo train
+.\.venv\Scripts\python.exe -m yolo_demo web
+```
+
+训练会下载 YOLO11n 与 COCO8 示例数据，并生成 best.pt。GPU 运行需要匹配显卡驱动的 CUDA 版 PyTorch；没有可用 CUDA 时网页使用 CPU。现有 train 示例要求可用 CUDA。
+
+仓库发布的是源码、网页和说明文档，不上传虚拟环境、模型权重、数据集、运行缓存或本机相机画面。GitHub 仓库不提供在线摄像头推理服务；需在本机启动 Python 后端。

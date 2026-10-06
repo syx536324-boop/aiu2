@@ -1,0 +1,10 @@
+.venv/
+.uv-cache/
+.config/
+.tmp/
+models/
+datasets/
+runs/
+__pycache__/
+*.pyc
+weights/
